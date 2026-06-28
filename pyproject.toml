@@ -2,7 +2,7 @@
 name = "shopbackend"
 version = "0.1.0"
 description = "Backend Django REST para ShopApplication"
-requires-python = ">=3.11"
+requires-python = ">=3.11,<3.12"
 dependencies = [
     "django>=5.1",
     "djangorestframework>=3.15",

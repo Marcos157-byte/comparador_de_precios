@@ -69,6 +69,10 @@ TEMPLATES = [
 WSGI_APPLICATION = "config.wsgi.application"
 
 # ── Base de datos ──────────────────────────────────────────────
+_db_options = {}
+if config("DB_SSLMODE", default=""):
+    _db_options["sslmode"] = config("DB_SSLMODE")
+
 DATABASES = {
     "default": {
         "ENGINE": "django.db.backends.postgresql",
@@ -77,6 +81,7 @@ DATABASES = {
         "PASSWORD": config("DB_PASSWORD"),
         "HOST": config("DB_HOST", default="localhost"),
         "PORT": config("DB_PORT", default="5432"),
+        "OPTIONS": _db_options,
     }
 }
 
@@ -98,6 +103,7 @@ USE_TZ = True
 
 # ── Static / Media ─────────────────────────────────────────────
 STATIC_URL = "static/"
+STATIC_ROOT = BASE_DIR / "staticfiles"
 MEDIA_URL = "media/"
 MEDIA_ROOT = BASE_DIR / "media"
 
