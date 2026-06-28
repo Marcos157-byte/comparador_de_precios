@@ -1,0 +1,102 @@
+name: Comparador — CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB:       comparador_test_db
+          POSTGRES_USER:     comparador_user
+          POSTGRES_PASSWORD: comparador_pass_123
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+        with:
+          version: "latest"
+
+      - name: Set up Python
+        run: uv python install 3.11
+
+      - name: Install dependencies
+        run: uv sync
+
+      - name: Run tests
+        env:
+          SECRET_KEY:    test-secret-key-for-ci-only
+          DEBUG:         "True"
+          ALLOWED_HOSTS: localhost,127.0.0.1
+          DB_NAME:       comparador_test_db
+          DB_USER:       comparador_user
+          DB_PASSWORD:   comparador_pass_123
+          DB_HOST:       localhost
+          DB_PORT:       "5432"
+        run: uv run python manage.py test --verbosity=2
+
+  deploy:
+    name: Deploy to VPS
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup SSH
+        run: |
+          mkdir -p ~/.ssh
+          echo "${{ secrets.VPS_SSH_KEY }}" > ~/.ssh/id_ed25519
+          chmod 600 ~/.ssh/id_ed25519
+          ssh-keyscan -H ${{ secrets.VPS_HOST }} >> ~/.ssh/known_hosts
+
+      - name: Deploy to VPS
+        env:
+          VPS_HOST:    ${{ secrets.VPS_HOST }}
+          VPS_USER:    ${{ secrets.VPS_USERNAME }}
+        run: |
+          ssh $VPS_USER@$VPS_HOST << 'ENDSSH'
+            set -e
+            export PATH="$HOME/.local/bin:$PATH"
+
+            echo "── 1. Actualizando código ──"
+            cd /opt/comparador_de_precios
+            git fetch origin
+            git reset --hard origin/main
+
+            echo "── 2. Instalando dependencias ──"
+            uv sync
+
+            echo "── 3. Aplicando migraciones ──"
+            uv run python manage.py migrate --noinput
+
+            echo "── 4. Recolectando estáticos ──"
+            uv run python manage.py collectstatic --noinput --clear
+
+            echo "── 5. Reiniciando servicios ──"
+            systemctl restart gunicorn-shopapi
+            systemctl restart nginx
+
+            echo "Despliegue completado exitosamente"
+          ENDSSH
